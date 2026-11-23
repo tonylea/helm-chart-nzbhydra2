@@ -27,6 +27,30 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
+        # The app rejects a file without its full base config, so a missing one is first written by the app itself.
+        - name: seed-config
+          image: "lscr.io/linuxserver/nzbhydra2:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              file=/config/nzbhydra.yml
+              [ -s "$file" ] && exit 0
+              cd /app/nzbhydra2
+              ./core --nobrowser --datafolder /config &
+              pid=$!
+              for _ in $(seq 120); do
+                grep -qs '^main:' "$file" && break
+                sleep 1
+              done
+              grep -qs '^main:' "$file"
+              sleep 5
+              kill "$pid" || true
+              wait "$pid" || true
+          volumeMounts:
+            - name: config
+              mountPath: /config
         - name: settings
           image: "{{ .Values.initImage.repository }}:{{ .Values.initImage.tag }}"
           command:
@@ -35,7 +59,6 @@ spec:
             - |
               set -eu
               file=/config/nzbhydra.yml
-              [ -s "$file" ] || echo '{}' > "$file"
               yq -i "$EXPRESSION" "$file"
               chown "$PUID:$PGID" "$file"
           env:

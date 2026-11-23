@@ -75,12 +75,12 @@ tests:
             - name: TZ
               value: Europe/Berlin
       - contains:
-          path: spec.template.spec.initContainers[0].env
+          path: spec.template.spec.initContainers[1].env
           content:
             name: PUID
             value: "1026"
       - contains:
-          path: spec.template.spec.initContainers[0].env
+          path: spec.template.spec.initContainers[1].env
           content:
             name: PGID
             value: "100"
@@ -143,7 +143,7 @@ tests:
             - name: config
               mountPath: /config
       - equal:
-          path: spec.template.spec.initContainers[0].volumeMounts
+          path: spec.template.spec.initContainers[1].volumeMounts
           value:
             - name: config
               mountPath: /config
@@ -154,13 +154,27 @@ tests:
           path: spec.template.spec.volumes[0].persistentVolumeClaim.claimName
           value: nzbhydra2-config
 
+  - it: writes the app's own base config first when the file is missing
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: seed-config
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: lscr.io/linuxserver/nzbhydra2:v9.3.3-ls116
+      - equal:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          value:
+            - name: config
+              mountPath: /config
+
   - it: runs the settings edit in a pinned yq image as root with only the capabilities it needs
     asserts:
       - equal:
-          path: spec.template.spec.initContainers[0].image
+          path: spec.template.spec.initContainers[1].image
           value: mikefarah/yq:4.54.3
       - equal:
-          path: spec.template.spec.initContainers[0].securityContext
+          path: spec.template.spec.initContainers[1].securityContext
           value:
             runAsUser: 0
             allowPrivilegeEscalation: false
@@ -174,13 +188,13 @@ tests:
       initImage.tag: "4.0.0"
     asserts:
       - equal:
-          path: spec.template.spec.initContainers[0].image
+          path: spec.template.spec.initContainers[1].image
           value: example.com/yq:4.0.0
 
   - it: reads the API key, login and indexer keys from Secrets
     asserts:
       - contains:
-          path: spec.template.spec.initContainers[0].env
+          path: spec.template.spec.initContainers[1].env
           content:
             name: API_KEY
             valueFrom:
@@ -188,7 +202,7 @@ tests:
                 name: nzbhydra2
                 key: api-key
       - contains:
-          path: spec.template.spec.initContainers[0].env
+          path: spec.template.spec.initContainers[1].env
           content:
             name: AUTH_USERNAME
             valueFrom:
@@ -196,7 +210,7 @@ tests:
                 name: nzbhydra2
                 key: username
       - contains:
-          path: spec.template.spec.initContainers[0].env
+          path: spec.template.spec.initContainers[1].env
           content:
             name: AUTH_PASSWORD
             valueFrom:
@@ -204,7 +218,7 @@ tests:
                 name: nzbhydra2
                 key: password
       - contains:
-          path: spec.template.spec.initContainers[0].env
+          path: spec.template.spec.initContainers[1].env
           content:
             name: INDEXER_0_API_KEY
             valueFrom:
@@ -229,14 +243,14 @@ tests:
               key: api-key
     asserts:
       - equal:
-          path: spec.template.spec.initContainers[0].env[0].value
+          path: spec.template.spec.initContainers[1].env[0].value
           value: |-
             .main.apiKey = strenv(API_KEY) |
             .auth.authType = "FORM" |
             .auth.users = [{"username": strenv(AUTH_USERNAME), "password": "{noop}" + strenv(AUTH_PASSWORD), "maySeeAdmin": true, "maySeeStats": true, "maySeeDetailsDl": true, "showIndexerSelection": true}] |
             .indexers = [{"name": "first", "host": "https://first.example.com", "apiKey": strenv(INDEXER_0_API_KEY), "searchModuleType": "NEWZNAB", "state": "ENABLED"}, {"name": "second \"quoted\"", "host": "https://second.example.com", "apiKey": strenv(INDEXER_1_API_KEY), "searchModuleType": "NEWZNAB", "state": "ENABLED"}]
       - contains:
-          path: spec.template.spec.initContainers[0].env
+          path: spec.template.spec.initContainers[1].env
           content:
             name: INDEXER_1_API_KEY
             valueFrom:
@@ -249,7 +263,7 @@ tests:
       indexers: []
     asserts:
       - matchRegex:
-          path: spec.template.spec.initContainers[0].env[0].value
+          path: spec.template.spec.initContainers[1].env[0].value
           pattern: '\.indexers = \[\]$'
 
   - it: fails without the API key's Secret

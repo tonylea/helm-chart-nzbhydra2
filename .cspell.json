@@ -12,6 +12,7 @@
     "package-lock.json"
   ],
   "words": [
+    "datafolder",
     "FOWNER",
     "httproute",
     "kubeconform",
@@ -19,6 +20,7 @@
     "mikefarah",
     "Newznab",
     "nindent",
+    "nobrowser",
     "nzbhydra",
     "PGID",
     "Prowlarr",

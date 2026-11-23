@@ -43,7 +43,7 @@ The image starts as root, switches to `puid` and `pgid`, and keeps the default c
 ## Fixed settings
 
 NZBHydra2 has no environment variables for its settings, so an init container sets these keys in `/config/nzbhydra.yml` at every start, and leaves every other key as it is.
-If the file is missing, it creates it with only these keys.
+If the file is missing, a first init container starts NZBHydra2 briefly so the app writes its own complete base config, and the settings edit then applies to that.
 A change made to them in the web UI is lost at the next start.
 
 - `main.apiKey`, from `apiKey`'s Secret.
