@@ -1,0 +1,19 @@
+suite: Service
+release:
+  name: nzbhydra2
+templates:
+  - templates/service.yaml
+tests:
+  - it: exposes NZBHydra2's port to the pod's selector labels
+    asserts:
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/name: nzbhydra2
+            app.kubernetes.io/instance: nzbhydra2
+      - equal:
+          path: spec.ports
+          value:
+            - name: http
+              port: 5076
+              targetPort: http

@@ -1,0 +1,289 @@
+suite: Deployment
+release:
+  name: nzbhydra2
+templates:
+  - templates/deployment.yaml
+values:
+  - ../ci/kind-values.yaml
+tests:
+  - it: runs one replica of the chart's appVersion, stopping the old pod first
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: lscr.io/linuxserver/nzbhydra2:v9.3.3-ls116
+
+  - it: uses the image tag when one is set
+    set:
+      image.tag: v9.3.2-ls115
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: lscr.io/linuxserver/nzbhydra2:v9.3.2-ls115
+
+  - it: leaves the chart's version off the pod, so a chart-only release doesn't restart it
+    chart:
+      version: 9.9.9
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels
+          value:
+            app.kubernetes.io/name: nzbhydra2
+            app.kubernetes.io/instance: nzbhydra2
+            app.kubernetes.io/version: v9.3.3-ls116
+
+  - it: starts as root with the default seccomp profile and capabilities, and no service links or API token
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            seccompProfile:
+              type: RuntimeDefault
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext
+      - equal:
+          path: spec.template.spec.enableServiceLinks
+          value: false
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+
+  - it: waits 120 seconds for NZBHydra2 to stop
+    asserts:
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 120
+
+  - it: passes the user, group and timezone
+    set:
+      puid: 1026
+      pgid: 100
+      timezone: Europe/Berlin
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: PUID
+              value: "1026"
+            - name: PGID
+              value: "100"
+            - name: TZ
+              value: Europe/Berlin
+      - contains:
+          path: spec.template.spec.initContainers[1].env
+          content:
+            name: PUID
+            value: "1026"
+      - contains:
+          path: spec.template.spec.initContainers[1].env
+          content:
+            name: PGID
+            value: "100"
+
+  - it: probes the health endpoint on the web port
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports
+          value:
+            - name: http
+              containerPort: 5076
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet
+          value:
+            path: /actuator/health/ping
+            port: http
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value:
+            path: /actuator/health/ping
+            port: http
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value:
+            path: /actuator/health/ping
+            port: http
+
+  - it: sets no resources by default
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value: {}
+  - it: passes resources when set
+    set:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+
+  - it: mounts the existing claim at /config in both containers
+    set:
+      persistence.config.existingClaim: nzbhydra2-data
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes
+          value:
+            - name: config
+              persistentVolumeClaim:
+                claimName: nzbhydra2-data
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts
+          value:
+            - name: config
+              mountPath: /config
+      - equal:
+          path: spec.template.spec.initContainers[1].volumeMounts
+          value:
+            - name: config
+              mountPath: /config
+
+  - it: mounts the chart's own claim by default
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[0].persistentVolumeClaim.claimName
+          value: nzbhydra2-config
+
+  - it: writes the app's own base config first when the file is missing
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: seed-config
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: lscr.io/linuxserver/nzbhydra2:v9.3.3-ls116
+      - equal:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          value:
+            - name: config
+              mountPath: /config
+
+  - it: runs the settings edit in a pinned yq image as root with only the capabilities it needs
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].image
+          value: mikefarah/yq:4.54.3
+      - equal:
+          path: spec.template.spec.initContainers[1].securityContext
+          value:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER]
+
+  - it: uses the init image when one is set
+    set:
+      initImage.repository: example.com/yq
+      initImage.tag: "4.0.0"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].image
+          value: example.com/yq:4.0.0
+
+  - it: reads the API key, login and indexer keys from Secrets
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[1].env
+          content:
+            name: API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: nzbhydra2
+                key: api-key
+      - contains:
+          path: spec.template.spec.initContainers[1].env
+          content:
+            name: AUTH_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: nzbhydra2
+                key: username
+      - contains:
+          path: spec.template.spec.initContainers[1].env
+          content:
+            name: AUTH_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: nzbhydra2
+                key: password
+      - contains:
+          path: spec.template.spec.initContainers[1].env
+          content:
+            name: INDEXER_0_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: nzbhydra2
+                key: indexer-api-key
+
+  - it: sets the managed keys, with each indexer's key from its own Secret
+    set:
+      indexers:
+        - name: first
+          host: https://first.example.com
+          apiKey:
+            secretKeyRef:
+              name: first-indexer
+              key: key
+        - name: second "quoted"
+          host: https://second.example.com
+          apiKey:
+            secretKeyRef:
+              name: second-indexer
+              key: api-key
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].env[0].value
+          value: |-
+            .main.apiKey = strenv(API_KEY) |
+            .auth.authType = "FORM" |
+            .auth.users = [{"username": strenv(AUTH_USERNAME), "password": "{noop}" + strenv(AUTH_PASSWORD), "maySeeAdmin": true, "maySeeStats": true, "maySeeDetailsDl": true, "showIndexerSelection": true}] |
+            .indexers = [{"name": "first", "host": "https://first.example.com", "apiKey": strenv(INDEXER_0_API_KEY), "searchModuleType": "NEWZNAB", "state": "ENABLED"}, {"name": "second \"quoted\"", "host": "https://second.example.com", "apiKey": strenv(INDEXER_1_API_KEY), "searchModuleType": "NEWZNAB", "state": "ENABLED"}]
+      - contains:
+          path: spec.template.spec.initContainers[1].env
+          content:
+            name: INDEXER_1_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: second-indexer
+                key: api-key
+
+  - it: sets an empty indexers list when there are none
+    set:
+      indexers: []
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].env[0].value
+          pattern: '\.indexers = \[\]$'
+
+  - it: fails without the API key's Secret
+    set:
+      apiKey.secretKeyRef.name: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: apiKey.secretKeyRef.name is required
+
+  - it: fails without the login's Secrets
+    set:
+      auth.username.secretKeyRef.name: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: auth.username.secretKeyRef.name is required
+
+  - it: fails when an indexer has no host or no key
+    set:
+      indexers:
+        - name: first
+    asserts:
+      - failedTemplate:
+          errorMessage: indexers[0].host is required
