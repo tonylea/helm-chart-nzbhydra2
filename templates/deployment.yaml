@@ -38,7 +38,7 @@ spec:
               file=/config/nzbhydra.yml
               [ -s "$file" ] && exit 0
               cd /app/nzbhydra2
-              ./core --nobrowser --datafolder /config &
+              ./core directstart --nobrowser --datafolder /config &
               pid=$!
               for _ in $(seq 120); do
                 grep -qs '^main:' "$file" && break
