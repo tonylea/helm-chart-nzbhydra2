@@ -1,0 +1,17 @@
+apiKey:
+  secretKeyRef:
+    name: nzbhydra2
+auth:
+  username:
+    secretKeyRef:
+      name: nzbhydra2
+  password:
+    secretKeyRef:
+      name: nzbhydra2
+indexers:
+  - name: example
+    host: https://indexer.example.com
+    apiKey:
+      secretKeyRef:
+        name: nzbhydra2
+        key: indexer-api-key

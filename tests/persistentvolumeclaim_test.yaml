@@ -1,0 +1,48 @@
+suite: PersistentVolumeClaim
+release:
+  name: nzbhydra2
+templates:
+  - templates/persistentvolumeclaim.yaml
+values:
+  - ../ci/kind-values.yaml
+tests:
+  - it: creates a claim for /config in the default storage class
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: nzbhydra2-config
+      - equal:
+          path: spec
+          value:
+            accessModes: [ReadWriteOnce]
+            resources:
+              requests:
+                storage: 5Gi
+
+  - it: uses the storage class and size when set
+    set:
+      persistence.config.storageClassName: fast
+      persistence.config.size: 10Gi
+    asserts:
+      - equal:
+          path: spec.storageClassName
+          value: fast
+      - equal:
+          path: spec.resources.requests.storage
+          value: 10Gi
+
+  - it: creates no claim when one exists
+    set:
+      persistence.config.existingClaim: nzbhydra2-data
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails without an existing claim or a size
+    set:
+      persistence.config.size: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: persistence.config needs an existingClaim or a size
