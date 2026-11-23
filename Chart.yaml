@@ -1,0 +1,10 @@
+apiVersion: v2
+name: nzbhydra2
+description: Deploys NZBHydra2, a meta search for Usenet indexers
+type: application
+version: 1.0.0
+appVersion: "v9.3.3-ls116"
+home: https://github.com/tonylea/helm-chart-nzbhydra2
+sources:
+  - https://github.com/theotherp/nzbhydra2
+  - https://github.com/linuxserver/docker-nzbhydra2

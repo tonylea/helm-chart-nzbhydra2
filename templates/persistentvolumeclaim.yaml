@@ -1,0 +1,17 @@
+{{- if not .Values.persistence.config.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nzbhydra2.claimName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nzbhydra2.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.persistence.config.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ required "persistence.config needs an existingClaim or a size" .Values.persistence.config.size }}
+{{- end }}

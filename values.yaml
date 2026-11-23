@@ -1,0 +1,52 @@
+image:
+  # Empty uses the chart's appVersion.
+  tag: ""
+
+# Runs the settings edit before NZBHydra2 starts.
+initImage:
+  repository: mikefarah/yq
+  tag: "4.54.3"
+
+puid: 1000
+pgid: 1000
+
+timezone: UTC
+
+# main.apiKey: what other apps, such as Prowlarr, send as NZBHydra2's API key.
+apiKey:
+  secretKeyRef:
+    name: ""
+    key: api-key
+
+# The one login, written to auth.users.
+auth:
+  username:
+    secretKeyRef:
+      name: ""
+      key: username
+  password:
+    secretKeyRef:
+      name: ""
+      key: password
+
+# Usenet indexers, each added as a Newznab indexer:
+# - name: example
+#   host: https://indexer.example.com
+#   apiKey:
+#     secretKeyRef:
+#       name: example-indexer
+#       key: api-key
+indexers: []
+
+resources: {}
+
+persistence:
+  config:
+    existingClaim: ""
+    storageClassName: ""
+    size: 5Gi
+
+httpRoute:
+  enabled: false
+  parentRefs: []
+  hostnames: []

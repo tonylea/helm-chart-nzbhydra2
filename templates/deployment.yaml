@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nzbhydra2.labels" . | nindent 4 }}
+spec:
+  # The H2 database in /config has one writer, so the old pod stops before the new one starts.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nzbhydra2.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nzbhydra2.podLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      # A killed process skips the shutdown cleanup and leaves the database larger.
+      terminationGracePeriodSeconds: 120
+      # No runAsUser: the image starts as root to chown /config, then drops to PUID and PGID.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: settings
+          image: "{{ .Values.initImage.repository }}:{{ .Values.initImage.tag }}"
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              file=/config/nzbhydra.yml
+              [ -s "$file" ] || echo '{}' > "$file"
+              yq -i "$EXPRESSION" "$file"
+              chown "$PUID:$PGID" "$file"
+          env:
+            - name: EXPRESSION
+              value: |-
+                {{- include "nzbhydra2.settingsExpression" . | trim | nindent 16 }}
+            - name: PUID
+              value: {{ .Values.puid | quote }}
+            - name: PGID
+              value: {{ .Values.pgid | quote }}
+            - name: API_KEY
+              valueFrom:
+                {{- include "nzbhydra2.secretKeyRef" (list "apiKey" .Values.apiKey) | nindent 16 }}
+            - name: AUTH_USERNAME
+              valueFrom:
+                {{- include "nzbhydra2.secretKeyRef" (list "auth.username" .Values.auth.username) | nindent 16 }}
+            - name: AUTH_PASSWORD
+              valueFrom:
+                {{- include "nzbhydra2.secretKeyRef" (list "auth.password" .Values.auth.password) | nindent 16 }}
+            {{- range $i, $indexer := .Values.indexers }}
+            - name: INDEXER_{{ $i }}_API_KEY
+              valueFrom:
+                {{- include "nzbhydra2.secretKeyRef" (list (printf "indexers[%d].apiKey" $i) $indexer.apiKey) | nindent 16 }}
+            {{- end }}
+          # Root, to write a file the app user owns; nothing more than that needs a capability.
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      containers:
+        - name: nzbhydra2
+          image: "lscr.io/linuxserver/nzbhydra2:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          env:
+            - name: PUID
+              value: {{ .Values.puid | quote }}
+            - name: PGID
+              value: {{ .Values.pgid | quote }}
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+          ports:
+            - name: http
+              containerPort: 5076
+          startupProbe:
+            httpGet:
+              path: /actuator/health/ping
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/ping
+              port: http
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/ping
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ include "nzbhydra2.claimName" . }}
